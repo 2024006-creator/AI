@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vision: Neo Cyber Detector</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root {
+            --bg-color: #030712;
+            --panel-bg: rgba(17, 24, 39, 0.7);
+            --primary: #06b6d4;
+            --primary-glow: rgba(6, 182, 212, 0.3);
+            --accent: #10b981;
+            --accent-glow: rgba(16, 185, 129, 0.3);
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+        }
+
+        body {
+            font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        /* 헤더 스타일 */
+        header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin: 0 0 8px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: linear-gradient(to right, #06b6d4, #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            drop-shadow: 0 2px 8px var(--primary-glow);
+        }
+
+        header p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* 메인 대시보드 컨테이너 */
+        .dashboard {
+            width: 100%;
+            max-width: 540px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            box-sizing: border-box;
+        }
+
+        /* 스태커 및 상태 표시줄 */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        #status {
+            background: rgba(6, 182, 212, 0.1);
+            color: var(--primary);
+            padding: 6px 16px;
+            border-radius: 50px;
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        #fps-counter {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent);
+            padding: 6px 14px;
+            border-radius: 50px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        /* 뷰포트 (카메라 박스) */
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        video { display: none; }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* 사이버네틱 가이드 라인 디자인 */
+        .overlay-hud {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border: 1px solid rgba(6, 182, 212, 0.15);
+            box-sizing: border-box;
+        }
+        .overlay-hud::before, .overlay-hud::after {
+            content: '';
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            border-color: var(--primary);
+            border-style: solid;
+        }
+        .overlay-hud::before { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+        .overlay-hud::after { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
+        /* 컨트롤러 버튼 패널 */
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #0891b2);
+            border: none;
+            box-shadow: 0 4px 14px var(--primary-glow);
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #0891b2, #0e7490);
+            box-shadow: 0 6px 20px var(--primary-glow);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>⚡ NEO VISION AI</h1>
+        <p>실시간 인공지능 사물 인식 시스템</p>
+    </header>
+
+    <div class="dashboard">
+        <div class="status-bar">
+            <div id="status">🤖 CORE INITIALIZING...</div>
+            <div id="fps-counter">FPS: --</div>
+        </div>
+
+        <div id="canvas-container">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="display_canvas"></canvas>
+            <div class="overlay-hud"></div>
+        </div>
+
+        <div class="control-panel">
+            <button class="btn btn-primary" id="btn-toggle-detect">
+                <i data-lucide="play"></i> <span id="text-toggle">탐지 중지</span>
+            </button>
+            <button class="btn" id="btn-switch-camera">
+                <i data-lucide="refresh-cw"></i> 카메라 전환
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('display_canvas');
+        const ctx = canvas.getContext('2d');
+        const statusDiv = document.getElementById('status');
+        const fpsCounter = document.getElementById('fps-counter');
+        
+        const btnToggleDetect = document.getElementById('btn-toggle-detect');
+        const btnSwitchCamera = document.getElementById('btn-switch-camera');
+        const textToggle = document.getElementById('text-toggle');
+
+        let session;
+        let isDetecting = true;
+        let currentFacingMode = "environment"; 
+        const modelWidth = 640;
+        const modelHeight = 640;
+
+        // FPS 측정용 변수
+        let lastLoggedTime = performance.now();
+        let frameCount = 0;
+
+        const labels = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"];
+
+        // 카메라 시작 함수
+        async function setupCamera() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+                audio: false
+            });
+            video.srcObject = stream;
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    resolve(video);
+                };
+            });
+        }
+
+        // 메인 앱 구동
+        async function startApp() {
+            try {
+                statusDiv.innerText = "⏳ MODEL LOADING (14MB)...";
+                statusDiv.style.background = "rgba(245, 158, 11, 0.1)";
+                statusDiv.style.color = "#f59e0b";
+
+                // ONNX 세션 로드
+                session = await ort.InferenceSession.create('yolov8n.onnx', { executionProviders: ['webgl', 'wasm'] });
+
+                statusDiv.innerText = "📷 ACCESSING CAMERA...";
+                await setupCamera();
+                await video.play();
+
+                statusDiv.innerText = "🎯 SYSTEM ONLINE";
+                statusDiv.style.background = "rgba(16, 185, 129, 0.1)";
+                statusDiv.style.color = "#10b981";
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                requestAnimationFrame(processFrame);
+            } catch (err) {
+                statusDiv.innerText = "❌ ERROR OCCURRED";
+                statusDiv.style.background = "rgba(239, 68, 68, 0.1)";
+                statusDiv.style.color = "#ef4444";
+                console.error(err);
+            }
+        }
+
+        // 프레임 루프 처리
+        async function processFrame() {
+            if (!isDetecting) {
+                // 탐지 중지 상태일 때는 화면에 카메라만 렌더링하고 루프 유지
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                }
+                requestAnimationFrame(processFrame);
+                return;
+            }
+
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // FPS 계산
+                frameCount++;
+                const now = performance.now();
+                if (now - lastLoggedTime >= 1000) {
+                    fpsCounter.innerText = `FPS: ${frameCount}`;
+                    frameCount = 0;
+                    lastLoggedTime = now;
+                }
+
+                const inputTensor = preprocess(video, modelWidth, modelHeight);
+
+                if (inputTensor) {
+                    try {
+                        const outputs = await session.run({ images: inputTensor });
+                        const output = outputs[Object.keys(outputs)[0]];
+                        postprocess(output.data, output.dims);
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+            }
+            requestAnimationFrame(processFrame);
+        }
+
+        // 전처리 (정규화 및 차원 배열 세팅)
+        function preprocess(img, width, height) {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(img, 0, 0, width, height);
+
+            const imgData = tempCtx.getImageData(0, 0, width, height);
+            const data = imgData.data;
+
+            const r = new Float32Array(width * height);
+            const g = new Float32Array(width * height);
+            const b = new Float32Array(width * height);
+
+            for (let i = 0; i < data.length / 4; i++) {
+                r[i] = data[i * 4] / 255.0;
+                g[i] = data[i * 4 + 1] / 255.0;
+                b[i] = data[i * 4 + 2] / 255.0;
+            }
+
+            const float32Data = new Float32Array(width * height * 3);
+            float32Data.set(r, 0);
+            float32Data.set(g, width * height);
+            float32Data.set(b, width * height * 2);
+
+            return new ort.Tensor('float32', float32Data, [1, 3, width, height]);
+        }
+
+        // 후처리 및 캔버스 객체 시각화
+        function postprocess(data, dims) {
+            const numAttributes = dims[1]; // 84 (4+80)
+            const numBoxes = dims[2];      // 8400
+
+            // 더 디테일한 탐색을 위해 스텝을 1로 변경하고 신뢰도가 높은 상자 보관
+            let validDetections = [];
+
+            for (let i = 0; i < numBoxes; i++) {
+                let maxScore = 0;
+                let classId = -1;
+
+                for (let c = 4; c < numAttributes; c++) {
+                    const score = data[c * numBoxes + i];
+                    if (score > maxScore) {
+                        maxScore = score;
+                        classId = c - 4;
+                    }
+                }
+
+                // 신뢰도가 0.5 이상인 박스 수집
+                if (maxScore > 0.5) {
+                    const cx = data[0 * numBoxes + i] / modelWidth * canvas.width;
+                    const cy = data[1 * numBoxes + i] / modelHeight * canvas.height;
+                    const w = data[2 * numBoxes + i] / modelWidth * canvas.width;
+                    const h = data[3 * numBoxes + i] / modelHeight * canvas.height;
+                    const x = cx - w / 2;
+                    const y = cy - h / 2;
+
+                    validDetections.push({ x, y, w, h, score: maxScore, classId });
+                }
+            }
+
+            // 간단한 중복 억제 필터링 (NMS 대체)
+            // 신뢰도 순 정렬 후 겹치는 박스 제거
+            validDetections.sort((a, b) => b.score - a.score);
+            const resultBoxes = [];
+            
+            while (validDetections.length > 0) {
+                const best = validDetections.shift();
+                resultBoxes.push(best);
+                validDetections = validDetections.filter(item => {
+                    // 동일한 클래스이면서 완전히 겹치는 영역이 많은 상자 필터링
+                    if(item.classId === best.classId) {
+                        const overlapX = Math.max(0, Math.min(best.x + best.w, item.x + item.w) - Math.max(best.x, item.x));
+                        const overlapY = Math.max(0, Math.min(best.y + best.h, item.y + item.h) - Math.max(best.y, item.y));
+                        if((overlapX * overlapY) / (best.w * best.h) > 0.7) return false;
+                    }
+                    return true;
+                });
+            }
+
+            // 필터링 된 상자 그리기
+            resultBoxes.forEach(box => {
+                // 네온 사이언 그린 컬러로 바운딩 박스 세팅
+                ctx.strokeStyle = "#06b6d4";
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = "#06b6d4"; // 박스에 야간 투시경 느낌의 네온 네온한 그림자 효과 추가
+                ctx.strokeRect(box.x, box.y, box.w, box.h);
+                
+                // 그림자 리셋 (글자용)
+                ctx.shadowBlur = 0;
+
+                // 텍스트 라벨 배경 스타일
+                ctx.fillStyle = "rgba(6, 182, 212, 0.85)";
+                const text = `${labels[box.classId]} ${Math.round(box.score * 100)}%`;
+                ctx.font = "bold 12px monospace";
+                const textWidth = ctx.measureText(text).width;
+                
+                ctx.fillRect(box.x - 1, box.y - 21, textWidth + 12, 20);
+
+                // 텍스트 그리기
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(text, box.x + 5, box.y - 6);
+            });
+        }
+
+        // 버튼 이벤트 바인딩
+        btnToggleDetect.addEventListener('click', () => {
+            isDetecting = !isDetecting;
+            if (isDetecting) {
+                textToggle.innerText = "탐지 중지";
+                btnToggleDetect.classList.add('btn-primary');
+                lucide.createIcons(); // 아이콘 업데이트
+            } else {
+                textToggle.innerText = "탐지 시작";
+                btnToggleDetect.classList.remove('btn-primary');
+                fpsCounter.innerText = "FPS: --";
+            }
+        });
+
+        btnSwitchCamera.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+            statusDiv.innerText = "🔄 SWITCHING CAMERA...";
+            try {
+                await setupCamera();
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                statusDiv.innerText = "🎯 SYSTEM ONLINE";
+            } catch (err) {
+                console.error("카메라 전환 실패: ", err);
+            }
+        });
+
+        // 앱 최초 가동 및 아이콘 초기화
+        window.onload = () => {
+            startApp();
+            lucide.createIcons();
+        };
+    </script>
+</body>
+</html>
